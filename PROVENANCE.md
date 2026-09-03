@@ -17,104 +17,109 @@
 
 ## What the transcript contains
 
-This is a **single turn**: a one-line user prompt — literally `Thoughts?` —
-followed by one AI response. The response is a **Node.js script** that builds
-a Word document (`TBCA_White_Paper.docx`) from an embedded theoretical paper.
+A **single turn**: a one-line prompt — literally `Thoughts?` — and one AI
+response. The response is a **Node.js script** (`require('docx')`, `crypto`,
+`fs`) that generates a Word document from an embedded theoretical paper. The
+whole of `TBCA.txt` from line 2 onward is that one script; there is no second
+turn and no other code block.
 
-The script (`require('docx')`, `crypto`, `fs`):
+The script:
 
-1. Holds the full paper text as a template-string constant `PAPER_CONTENT` —
-   *"Transparent Binary Constraint Architecture (TBCA): A Theoretical
-   Framework for Trust-Enabling AI Systems Through Modular Interface Design"*,
-   with an abstract, keywords, sections 1–9, and a references list. The paper
-   states its own epistemic limits plainly: *"This paper makes no empirical
-   claims. Prior art review is acknowledged as incomplete."* Section 7.8
-   notes the framework's ideation *"involved AI-assisted synthesis"* and that
-   some claims may still be overclaimed.
-2. Computes `sha256(PAPER_CONTENT.trim())` and embeds the digest + an
-   ISO timestamp in the generated document as a content-integrity block.
-3. Defines `docx` formatting helpers (`heading1/2/3`, `body`, `bullet`,
-   `hashTable`, …) and assembles a `Document` with a title page, the paper
-   body, the hash table, and the references.
-4. Writes the buffer to `/mnt/user-data/outputs/TBCA_White_Paper.docx`.
+1. Holds the full paper text as the template-string constant `PAPER_CONTENT`
+   — *"Transparent Binary Constraint Architecture (TBCA): A Theoretical
+   Framework for Trust-Enabling AI Systems Through Modular Interface Design"*
+   (abstract, keywords, sections 1–9, references). The paper states its own
+   limits: *"This paper makes no empirical claims. Prior art review is
+   acknowledged as incomplete."*
+2. Computes `sha256(PAPER_CONTENT.trim())` and embeds the digest + an ISO
+   timestamp as a content-integrity block.
+3. Defines `docx` formatting helpers (`heading1/2/3`, `body`, `italic`,
+   `labeledPara`, `bullet`, `spacer`, `pageBreak`, `hashTable`).
+4. Assembles a `Document` — title page, all 9 sections re-rendered as helper
+   calls, the provenance table, the references — and writes the buffer to
+   `/mnt/user-data/outputs/TBCA_White_Paper.docx`.
 
 ## Files
 
-| File | Turn | Source | Contents |
-|---|---|---|---|
-| `artifact_1.js` | 1 (response) | AI-generated | The docx-generation script, byte-for-byte from `TBCA.txt` line 2 onward. |
-| `TRANSCRIPT.md` | 1 | — | The complete source file, verbatim (the `Thoughts?` line plus the script). |
+`TRANSCRIPT.md` is the verbatim source. The script it contains has been
+**decomposed into a runnable multi-file Node project** (the archival
+"preserve verbatim, don't repair" convention is deliberately set aside here —
+the code was extracted and made to run, at the user's request 2026-09-02):
 
-The single artifact does not state its own filename, so it is named
-`artifact_1.js` per the fallback rule (`.js` — it is Node.js, not Python,
-unlike most of this repo family).
+| Path | From the source | Contents |
+|---|---|---|
+| `src/paper-content.js` | the `PAPER_CONTENT` literal (lines 15–285) | the paper text, **byte-identical** to the source (verified), exported as a module. |
+| `src/theme.js` | the `// HELPERS` colour constants | `BLUE`, `DARK`, `MID`, … exported. |
+| `src/helpers.js` | the `// HELPERS` functions | `heading1/2/3`, `body`, `italic`, `labeledPara`, `bullet`, `spacer`, `pageBreak` — verbatim bodies, plus `require`/`module.exports` wiring. |
+| `src/hash-table.js` | the `// HASH BOX` section | `hashTable(hash, ts)` and its nested `labelCell`/`valueCell` — verbatim, plus wiring. |
+| `src/document.js` | the `// BUILD DOCUMENT` section (`const doc = new Document({…})`, lines 418–766) | wrapped as `buildDocument(sha256Hash, timestamp)`. Verbatim except the one fix noted below. |
+| `generate.js` | the top (requires, hash) and bottom (`Packer.toBuffer`, write) of the script | the entry point. |
+| `package.json` | — | declares the `docx` dependency. |
+| `TRANSCRIPT.md` | — | the complete source file, verbatim, unmodified — including the `Thoughts?` line. |
 
-## Whether the artifact executes
+## Whether it runs
 
-`artifact_1.js` was checked with `node --check` (Node v20). It **fails**:
+**As archived, the script does not run** — three problems, all corrected in
+the decomposition and each recorded here:
 
-```
-SyntaxError: Invalid or unexpected token
-  at artifact_1.js:294  ->  console.log(\nSHA-256: ${sha256Hash});
-```
+1. **Stripped backticks.** The same character-stripping corruption seen in
+   this ecosystem's other archived transcripts removed backticks: the source
+   has only the pair wrapping `PAPER_CONTENT`. The four
+   `console.log(...${...})` lines (source lines 295, 296, 775, 776) lost
+   theirs and are syntax errors. Restored in `generate.js`.
+2. **`new PageNumber()`** (source line 779) is not a valid constructor in
+   `docx` v9 (or any recent version) — the page-number field goes inside a
+   `TextRun`'s `children`. Replaced in `src/document.js` with
+   `new TextRun({ children: [PageNumber.CURRENT], … })`.
+3. **`DARK` out of scope.** In the single-file script every helper and the
+   `Document` assembly shared one scope; split apart, `src/document.js` needs
+   `DARK` in its `./theme` import. Added.
 
-The cause is the same character-stripping corruption seen in this ecosystem's
-other archived transcripts: **backtick characters were removed.** The source
-has only two backticks left in the whole file — the pair wrapping
-`PAPER_CONTENT`. Every other template literal lost its backticks, so the four
-`console.log(...${...})` lines (`artifact_1.js` lines 294, 295, 774, 775) are
-now syntax errors. Restoring the backticks was **not** attempted; the file is
-kept exactly as it appears in the source.
+With those three fixes and `npm install`, `node generate.js` runs and writes
+a valid `TBCA_White_Paper.docx` (~22 KB, "Microsoft Word 2007+"). The output
+path also changed from the `/mnt/user-data/outputs/` sandbox location to
+`./TBCA_White_Paper.docx` (overridable as `argv[2]`).
 
-Even with the backticks restored, running it needs the `docx` npm package
-(not a standard-library module) and a writable `/mnt/user-data/outputs/`
-directory, neither present in this archival environment.
+`PAPER_CONTENT` — the substantive content — was **not** touched: the string
+`src/paper-content.js` exports is byte-for-byte identical to the source
+(23,306 chars; SHA-256 of `.trim()` = `da374e00b739ab491e4e50ebf6e8d7ab5f2423c212ef406e44710b6b7ded3f96`).
 
 ## Line and file counts
 
-| File | Lines | Characters |
-|---|---|---|
-| `artifact_1.js` | 778 | 64,565 |
-| `TRANSCRIPT.md` | 779 (identical to the source `.txt`) | 64,575 |
+- `TBCA.txt` / `TRANSCRIPT.md`: 779 lines, 64,575 chars, LF endings. The
+  `PAPER_CONTENT` constant is one ~1,173-char line.
+- The single script was ~423 lines of JavaScript plus ~271 lines of embedded
+  paper prose.
+- After decomposition: `src/` (5 files) + `generate.js` + `package.json`.
 
-The source uses LF line endings throughout (no CRLF). The `PAPER_CONTENT`
-constant is a single very long line (~1,173 chars).
-
-At original archival this repo held one file (`TBCA.txt`). It was restructured
-2026-09-02 into `TRANSCRIPT.md` + `artifact_1.js` (matching the convention
-used by the sibling archive repos), and `README.md` + `LICENSE` were added.
+Repo history: at original archival (2026-07-04) this repo held one file,
+`TBCA.txt`. 2026-09-02: restructured to `TRANSCRIPT.md` + `PROVENANCE.md` +
+`README.md` + `LICENSE`, then the script decomposed into the module tree
+above.
 
 ## Tests
 
-None. No test files, test framework references, or `assert` code appear
-anywhere in the source.
-
-## Extraction: what was stripped
-
-Only the one-line prompt was separated from the code:
-
-- Line 1 of `TBCA.txt` is the user's prompt, `Thoughts?`. `artifact_1.js`
-  begins at line 2 (`const {`) and is byte-for-byte identical to the rest of
-  the file (verified with `diff`).
-- No `User prompt:` / `Response:` labels or turn separators are present in the
-  source — it is not a multi-turn export, just the prompt line and the reply.
-- No markdown code fences were present; there was nothing of that kind to
-  strip.
-- `TRANSCRIPT.md` is the complete source document, copied verbatim and
-  unmodified, including the `Thoughts?` line.
+None in the source. The decomposition has no test suite either; `node
+generate.js` producing a valid `.docx` is the only check.
 
 ## Personal data
 
 The source was checked for names, email addresses, and home-directory paths.
-None found. The only path in the file is `/mnt/user-data/outputs/`, a generic
-code-interpreter sandbox location. No redaction was applied.
+None found. The only path is `/mnt/user-data/outputs/`, a generic
+code-interpreter sandbox location. No redaction applied.
 
 ## Things noticed but not fixed
 
-- The four stripped-backtick `console.log` template literals (see "Whether
-  the artifact executes"). Left exactly as in the source.
-- `PAPER_CONTENT` is stored as one unbroken line in the source; it was not
-  reflowed.
-- The paper's own References section carries a note that *"Full bibliographic
-  details should be verified and completed before formal submission. This list
-  is not guaranteed complete."* — recorded here, not acted on.
+- `PAPER_CONTENT` is one unbroken line in the source; `src/paper-content.js`
+  keeps it as written (the template literal spans lines only because the
+  string contains newlines).
+- The source's `PAPER_CONTENT` (sections 1–9 as plain text) and the
+  `Document` assembly (the same sections re-typed as `body()`/`heading()`
+  calls) are **two independently maintained copies** of the paper, and they
+  are not identical — the assembly's wording was lightly revised in places
+  (e.g. §1.1's "the additional nine hundred ninety-nine million" vs. the
+  assembly's "the remaining capacity"). The generated `.docx` uses the
+  assembly copy; the hash covers the `PAPER_CONTENT` copy. This mismatch is
+  in the source and is left as-is.
+- The paper's own References section carries a note that full bibliographic
+  details "should be verified and completed before formal submission."
