@@ -50,5 +50,5 @@ altered.
 
 ## License
 
-Apache-2.0 — see `LICENSE`. The archived transcript content is preserved
+Proprietary. Copyright (c) 2026 William N. King. All rights reserved. See LICENSE. The archived transcript content is preserved
 verbatim regardless.
